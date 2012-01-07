@@ -1,15 +1,20 @@
 (defpackage :cldbc
   (:use :cl :cl-mysql)
-  (:export :get-connection
-	   :select :select-fn
-	   :map-row
-	   :next-row :insert :insert-fn
-	   :update-fn :delete-fn))
+  (:export :select-fn
+	   :insert-fn
+	   :update-fn
+	   :delete-fn
+	   :get-connection
+	   :make-result
+	   :get-string-by-field
+	   :reset-pointer
+	   :result-content))
 
 (in-package :cldbc)
 
 (defclass result ()
-  ((schema :initarg :schema)
+  ((schema :initarg :schema
+	   :reader result-schema)
    (content :initarg :content
 	    :reader result-content)
    (pointer :initarg :pointer :initform 0
@@ -17,9 +22,10 @@
   (:documentation "A result of a query action. Query includes select, insert, update and delete."))
 
 (defun get-connection (user password database)
-  "Connect to the database by means of the USER name, PASSWORD and access DATABASE."
+  "Connect to the database by means of the USER name, PASSWORD and if succeeded, access to DATABASE. This function will set the character encode appropriately."
   (declare (string user password database))
-  (connect :user user :password password :database database))
+  (connect :user user :password password :database database)
+  (query "set names 'utf8'"))
 
 (defun mapend (fn list &optional not-end-action)
   "Call function FN with each element in proper LIST. If the element is not the last one, call the NOT-END-ACTION on it every time before calling the next one."
@@ -151,3 +157,14 @@
 (defun delete-fn (table &optional requirements)
   "Delete the row in TABLE which meets the REQUIREMENTS."
   (query (gen-delete-expr table requirements)))
+
+(defun get-string-by-field (result field)
+  "Get the value of the giving FIELD in the current row in RESULT."
+  (let ((pos (position field (result-schema result)
+		       :key #'car :test #'string-equal)))
+    (if pos
+	(nth pos (nth (result-pointer result)
+		      (result-content result))))))
+
+(defun reset-pointer (result)
+  (setf (result-pointer result) 0))

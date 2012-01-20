@@ -1,170 +1,150 @@
 (defpackage :cldbc
   (:use :cl :cl-mysql)
-  (:export :select-fn
-	   :insert-fn
-	   :update-fn
-	   :delete-fn
-	   :get-connection
+  (:export :sql-select			;Functions
+	   :sql-insert
+	   :sql-update
+	   :sql-delete
 	   :make-result
-	   :get-string-by-field
-	   :reset-pointer
-	   :result-content))
+	   :get-connection
+	   :maprow
+	   :dorow			;Macros
+	   :with-select
+	   ))
 
 (in-package :cldbc)
 
 (defclass result ()
-  ((schema :initarg :schema
-	   :reader result-schema)
-   (content :initarg :content
-	    :reader result-content)
-   (pointer :initarg :pointer :initform 0
-	    :accessor result-pointer))
-  (:documentation "A result of a query action. Query includes select, insert, update and delete."))
+  ((fields :initarg :fields
+	   :reader result-fields)
+   (content :initarg :content :initform nil
+	    :reader result-content))
+  (:documentation "The result of query. This class is used for shielding the details when manipulating the query result returned from the database."))
 
-(defun get-connection (user password database)
-  "Connect to the database by means of the USER name, PASSWORD and if succeeded, access to DATABASE. This function will set the character encode appropriately."
-  (declare (string user password database))
-  (connect :user user :password password :database database)
+(defun get-connection (user-name plain-password database-name)
+  "Connect to a existing database named DATABASE-NAME by means of the USER-NAME and PLAIN-PASSWORD and set the encoding appropriately."
+  (connect :user user-name
+	   :password plain-password
+	   :database database-name)
   (query "set names 'utf8'"))
 
-(defun mapend (fn list &optional not-end-action)
-  "Call function FN with each element in proper LIST. If the element is not the last one, call the NOT-END-ACTION on it every time before calling the next one."
-  (declare (function fn)
-	   (list list))
-  (when list
-    (funcall fn (car list))
-    (if (cdr list)
-	(funcall not-end-action (car list)))
-    (mapend fn (cdr list) not-end-action)))
+(defun gen-cond-expr (cond-spec &optional (cond-type 'where))
+  "Generate a string of AND expression that each sub-expression is constructed with a left-value, a operator and a right-value according to each element in the COND-SPEC list."
+  (with-output-to-string (*standard-output*)
+    (format t "~A " cond-type)
+    (loop for triple on cond-spec
+       do (destructuring-bind (l op r) (car triple)
+	    (format t "~A ~A '~A'" l op r))
+       when (cdr triple) do (format t " AND "))))
 
-(defun gen-cond-expr (requirements &optional (cond-type "WHERE"))
-  "Generate a AND statement that each sub-clauses is the form like `left-value operation right-value'."
-  (with-output-to-string (stream)
-    (format stream " ~A " cond-type)
-    (mapend #'(lambda (triple)
-		(destructuring-bind (l op r) triple
-		  (format stream "~A ~A '~A'" l op r)))
-	    requirements
-	    #'(lambda (x)
-		(declare (ignore x))
-		(format stream " AND ")))))
+(defun gen-group-by-expr (group-by-spec)
+  "Generate the string of GROUP BY clause."
+  (with-output-to-string (*standard-output*)
+    (format t "GROUP BY ")
+    (if (consp group-by-spec)
+	(destructuring-bind (col . conds) group-by-spec
+	  (format t "~A ~A" col (gen-cond-expr conds 'having)))
+	(format t "~A" group-by-spec))))
 
-(defun gen-select-expr (fields table &optional requirements group-by order-by)
-  (declare (list requirements)
-	   (string table))
-  (with-output-to-string (stream)
-    (format stream "SELECT ")
-    (if (eql '* fields)
-	(format stream "*")
-	(format stream "~{~A~^, ~}" fields))
-    (format stream " FROM ~A" table)
-    (if requirements
-	(format stream "~A" (gen-cond-expr requirements)))
-    (when group-by
-      (format stream " GROUP BY ")
-      (if (consp group-by)
-	  (destructuring-bind (col reqs) group-by
-	    (format stream "~A~A" col (gen-cond-expr reqs "HAVING")))
-	  (format stream "~A" group-by)))
-    (when order-by
-      (format stream " ORDER BY ")
-      (if (consp order-by)
-	  (destructuring-bind (col order) order-by
-	    (if (not (or (eql 'ASC order) (eql 'DESC order)))
-		(error "Unknown type of order ~A" order)
-		(format stream "~A ~A" col order)))
-	  (format stream "~A" order-by)))))
+(defun gen-order-by-expr (order-by-spec)
+  "Generate the string of ORDER BY clause."
+  (with-output-to-string (*standard-output*)
+    (format t "ORDER BY ")
+    (if (consp order-by-spec)
+	(destructuring-bind (col order) order-by-spec
+	  (format t "~A ~A" col order))
+	(format t "~A" order-by-spec))))
 
-(defmacro salet (key-values list &body body)
-  `(let ,(mapcar #'(lambda (pair)
-		     (destructuring-bind (k v) pair
-		       `(,v (second (assoc ',k ,list)))))
-		 key-values)
+(defun gen-fields-expr (fields-spec)
+  (with-output-to-string (*standard-output*)
+    (if (eq '* fields-spec)
+	(format t "*")
+	(loop for fields on fields-spec
+	   do (let ((field (car fields)))
+		(if (consp field)
+		    (format t "~{~A~^ ~}" field)
+		    (format t "~A" field)))
+	   when (cdr fields) do (format t ", ")))))
+
+(defun gen-sql-select-expr (fields-spec table-name &key where-spec group-by-spec order-by-spec)
+  "Generate the statement string represents selecting the fields specified in FIELDS-SPEC from table named TABLE-NAME and meets the requirements listed in WHERE-SPEC. If GROUP-BY-SPEC is non-nil, concatenate the corresponding string at the end of the previous generated string. So is the ORDER-BY-SPEC argument. See the manual for examples and details about this function."
+  (with-output-to-string (*standard-output*)
+    (format t "SELECT ~A" (gen-fields-expr fields-spec))
+    (format t " FROM ~A" table-name)
+    (if where-spec
+	(format t " ~A" (gen-cond-expr where-spec)))
+    (when group-by-spec
+      (format t " ~A" (gen-group-by-expr group-by-spec)))
+    (when order-by-spec
+      (format t " ~A" (gen-order-by-expr order-by-spec)))))
+
+(defun sql-select (fields-spec table-name &key where-spec group-by-spec order-by-spec)
+  "Excute the statement generated by the function GEN-SQL-SELECT-EXPR."
+  (query (gen-sql-select-expr fields-spec table-name
+			      :where-spec where-spec
+			      :group-by-spec group-by-spec
+			      :order-by-spec order-by-spec)))
+
+(defun gen-sql-insert-expr (table-name values &optional fields)
+  "Generate the statement for inserting a new value into a table named TABLE-NAME with VALUES. Columns would be specified if FIELDS is non-nil."
+  (with-output-to-string (*standard-output*)
+    (format t "INSERT INTO ~A" table-name)
+    (if fields
+	(format t " (~{~A~^, ~})" fields))
+    (format t " VALUES (~{'~A'~^, ~})" values)))
+
+(defun sql-insert (table-name values &optional fields)
+  "Insert a new entry into the given table in database."
+  (query (gen-sql-insert-expr table-name values fields)))
+
+(defun gen-sql-update-expr (table-name assignment-spec &key where-spec)
+  "Generate the statement for updating the existing entries. ASSIGNMENT-SPEC is a alist. Each of its elements specifies the field to be set and the right-value for assignment."
+  (with-output-to-string (*standard-output*)
+    (format t "UPDATE ~A SET ~{~{~A = '~A'~}~^, ~}"
+	    table-name assignment-spec)
+    (if where-spec
+	(format t " ~A" (gen-cond-expr where-spec)))))
+
+(defun sql-update (table-name assignment-spec &key where-spec)
+  "Update the content of the entries meets the given requirements in WHERE-SPEC."
+  (query (gen-sql-update-expr table-name assignment-spec
+			      :where-spec where-spec)))
+
+(defun gen-sql-delete-expr (table-name &key where-spec)
+  "Generate the statement string for deleting the specified entries in the table named TABLE-NAME."
+  (with-output-to-string (*standard-output*)
+    (format t "DELETE FROM ~A" table-name)
+    (if where-spec
+	(format t " ~A" (gen-cond-expr where-spec)))))
+
+(defun sql-delete (table-name &key where-spec)
+  (query (gen-sql-delete-expr table-name :where-spec where-spec)))
+
+(defun make-result (query-result)
+  "Convert the QUERY-RESULT returned by the function SQL-SELECT into a instance of class RESULT."
+  (make-instance 'result
+		 :fields (cadar query-result)
+		 :content (caar query-result)))
+
+(defun maprow (fn result)
+  (mapcar #'(lambda (row)
+	      (apply fn row))
+	  (result-content result)))
+
+(defmacro dorow ((var result) &body body)
+  `(dolist (,var (result-content ,result))
      ,@body))
 
-(defun select-fn (fields table &rest clauses)
-  "Select the FIELDS of rows in TABLE which meets the requirements in CLAUSES and format the output as described in CLAUSES."
-  (salet ((where requirements)
-	  (group-by group-by)
-	  (order-by order-by))
-      clauses
-    (query (gen-select-expr fields table requirements group-by order-by))))
-
-(defmacro select (fields table &body clauses)
-  "The equivaient macro of function SELECT-FN."
-  (salet ((where requirements)
-	  (group-by group-by)
-	  (order-by order-by))
-      clauses
-    `(query ,(gen-select-expr fields table requirements group-by order-by))))
-
-(defun make-result (original-result)
-  "Encapsulate the result of raw query into a defined class."
-  (make-instance 'result
-		 :schema (cadar original-result)
-		 :content (caar original-result)))
-
-(defun next-row (result)
-  "Get the next row which hasn't been processed."
-  (with-slots (content pointer) result
-    (prog1
-	(nth pointer content)
-      (incf pointer))))
-
-(defun map-row (fn result)
-  "Act as function like mapcar, but for rows in instace of class result."
-  (with-slots (content) result
-    (mapcar fn content)))
-
-(defun gen-insert-expr (table values &optional columns)
-  (declare (string table)
-	   (list columns values))
-  (with-output-to-string (stream)
-    (format stream "INSERT INTO ~A" table)
-    (when columns
-      (format stream " (~{~A~^, ~})" columns))
-    (format stream " VALUES (~{'~A'~^, ~})" values)))
-
-(defun insert-fn (table values &optional columns)
-  "Insert the VALUES into TABLE according to the COLUMNS."
-  (query (gen-insert-expr table values columns)))
-
-(defmacro insert ((table &optional columns) values)
-  "The equivaient macro of function INSERT-FN."
-  `(query ,(gen-insert-expr table values columns)))
-
-(defun gen-update-expr (table set-forms &optional requirements)
-  (declare (string table)
-	   (list set-forms requirements))
-  (with-output-to-string (stream)
-    (format stream "UPDATE ~A" table)
-    (format stream " SET ~{~{~A = '~A'~}~^, ~}" set-forms)
-    (when requirements
-      (format stream "~A" (gen-cond-expr requirements)))))
-
-(defun update-fn (table set-forms &optional requirements)
-  "Set the fields of rows which meets the REQUIREMENTS in TABLE according to the SET-FORMS."
-  (query (gen-update-expr table set-forms requirements)))
-
-(defun gen-delete-expr (table &optional requirements)
-  (declare (string table)
-	   (list requirements))
-  (with-output-to-string (stream)
-    (format stream "DELETE FROM ~A" table)
-    (when requirements
-      (format stream "~A" (gen-cond-expr requirements)))))
-
-(defun delete-fn (table &optional requirements)
-  "Delete the row in TABLE which meets the REQUIREMENTS."
-  (query (gen-delete-expr table requirements)))
-
-(defun get-string-by-field (result field)
-  "Get the value of the giving FIELD in the current row in RESULT."
-  (let ((pos (position field (result-schema result)
-		       :key #'car :test #'string-equal)))
-    (if pos
-	(nth pos (nth (result-pointer result)
-		      (result-content result))))))
-
-(defun reset-pointer (result)
-  (setf (result-pointer result) 0))
+(defmacro with-select ((field-vars table-name &key where-spec group-by-spec order-by-spec) &body body)
+  "Mix the functionanities of the function SQL-SELECT and the macro DOROW. The FIELD-VARS must be a list of symbols. If the car of FIELD-VARS is an asterisk, it means selecting all the fields in the table named TABLE-NAME, and the second element of FIELD-VARS would be the symbol indicates a row in the result set. Otherwise, they are both all the objective fields to be selected and the symbol bind to the value of the corresponding field. See file `exwith-select.lisp' for details."
+  (let ((row (gensym)))
+    `(dorow (,row (make-result (sql-select ',(if (eql '* (car field-vars))
+						 '*
+						 field-vars) ,table-name
+					   :where-spec ,where-spec
+					   :group-by-spec ,group-by-spec
+					   :order-by-spec ,order-by-spec)))
+       ,(if (eql '* (car field-vars))
+	    `(let ((,(cadr field-vars) ,row))
+	       ,@body)
+	    `(destructuring-bind ,field-vars ,row
+	       ,@body)))))

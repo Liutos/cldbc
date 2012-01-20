@@ -1,0 +1,7 @@
+;;; The example of deleting entries in the given table by means of the function 
+;;; SQL-DELETE. For this operation, you just need the name of the table you 
+;;; operated on and the optional requirements of the rows to be deleted. For 
+;;; example, the expression below show how to delete the row inserted in the 
+;;; tutorial of using SQL-INSERT function.
+
+()

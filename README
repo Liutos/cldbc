@@ -1,1 +1,7 @@
-This package contains the functions and macros for interacting with MySQL database in Common Lisp. In this version, the user can only operate on one database because it doesn't provide the functionality for changing yet. Now this package privides the functionalities including select, insert, update and delete. It's highly recommended that the user should use the package-defined class result for storing the query result each time and process the result by means of the function for this class.
+NOTE: This package is uncomplete and its interfaces are unstable.
+
+This is a package written in Common Lisp for interacting with the MySQL database management system. It's based on the CL-MYSQL package whose home page is ``http://www.hackinghat.com/index.php/cl-mysql''.
+
+This package aims to provide a more convenient manner of reading/writing data from/in the MySQL database. In fact, the functions exported by this package just generate the SQL statements and use the interfaces defined by package CL-MYSQL for sending the expressions to the MySQL database.
+
+This package implements the functionanities include connecting to a existing database, selecting, inserting, updating and deleting data objects, using the class and functions manipulating the query results. In a word, this package aims to provide a better interface for operating on data stored in a MySQL database.

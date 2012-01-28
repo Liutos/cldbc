@@ -7,8 +7,10 @@
 	   :make-result
 	   :get-connection
 	   :maprow
+	   :result-content
 	   :dorow			;Macros
 	   :with-select
+	   :with-slots-insert
 	   ))
 
 (in-package :cldbc)
@@ -17,7 +19,10 @@
   ((fields :initarg :fields
 	   :reader result-fields)
    (content :initarg :content :initform nil
-	    :reader result-content))
+	    :reader result-content)
+   (pointer :initform 0
+	    :accessor result-pointer
+	    :documentation "The value of this pointer indicates the position of the processing row in the content of the result. The value of this slot should just be modified from inner of some pre-defined functions."))
   (:documentation "The result of query. This class is used for shielding the details when manipulating the query result returned from the database."))
 
 (defun get-connection (user-name plain-password database-name)
@@ -90,11 +95,16 @@
     (format t "INSERT INTO ~A" table-name)
     (if fields
 	(format t " (~{~A~^, ~})" fields))
-    (format t " VALUES (~{'~A'~^, ~})" values)))
+    (format t " VALUES (~{'~A'~^, ~})" (mapcar #'escape-string values))))
 
 (defun sql-insert (table-name values &optional fields)
   "Insert a new entry into the given table in database."
   (query (gen-sql-insert-expr table-name values fields)))
+
+(defmacro with-slots-insert (table-name instance &rest slots)
+  "Insert the specified slots into database by specifying the corresponding fields in table named TABLE-NAME. The name of fields used in table must be the same as the symbol used in argument SLOTS."
+  `(with-slots ,slots ,instance
+     (sql-insert ,table-name (list ,@slots) ',slots)))
 
 (defun gen-sql-update-expr (table-name assignment-spec &key where-spec)
   "Generate the statement for updating the existing entries. ASSIGNMENT-SPEC is a alist. Each of its elements specifies the field to be set and the right-value for assignment."
@@ -126,6 +136,7 @@
 		 :content (caar query-result)))
 
 (defun maprow (fn result)
+  "Apply the function FN to each rows in the content of the RESULT."
   (mapcar #'(lambda (row)
 	      (apply fn row))
 	  (result-content result)))
@@ -148,3 +159,23 @@
 	       ,@body)
 	    `(destructuring-bind ,field-vars ,row
 	       ,@body)))))
+
+(defun nthrow (n result)
+  "Get the Nth row in the content of the argument RESULT of kind class result."
+  (nth n (result-content result)))
+
+(defun field-position (field-name result)
+  "Return the position of the field owned the name FIELD-NAME in the FIELDS slot of RESULT with type of class result. If the field named FIELD-NAME doesn't exist, NIL would be returned."
+  (let ((fields (result-fields result)))
+    (position (format nil "~A" field-name)
+	      fields :key #'car :test #'string=)))
+
+;;; In fact, I don't know what's the point of using this function but not the 
+;;; macro WITH-SELECT when processing with some fields after a selection 
+;;; operation. So this function isn't recommended.
+(defun get-field-in-row-by-name (field-name result)
+  "Return the value stored in the same position as the field named FIELD-NAME in the fields slot of RESULT. The caller must ensure the field with name FIELD-NAME is existed."
+  (let ((n (result-pointer result))
+	(content (result-content result))
+	(pos (field-position field-name result)))
+    (nth pos (nth n content))))

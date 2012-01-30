@@ -18,3 +18,14 @@
 	      '((Id INT :auto-increment t)
 		(Baz (CHAR 20) :not-null t))
 	      :table-primary-key '(Id))
+
+;;; You can also use this function to create the table used within the file 
+;;; `exselect.lisp' when describing the usage of function SQL-SELECT. The code 
+;;; below is what you need if you just want to create but not fill the table.
+
+(create-table "Student"
+	      '((Sno (VARCHAR 6) :not-null t)
+		(Sname (VARCHAR 10) :not-null t)
+		(Sex (CHAR 3) :not-null t)
+		(Age (INT 11) :not-null t)
+		(Dept (VARCHAR 10) :not-null t)))

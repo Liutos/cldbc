@@ -8,6 +8,8 @@
 	   :get-connection
 	   :maprow
 	   :result-content
+	   :sget-connection
+	   :create-database
 	   :dorow			;Macros
 	   :with-select
 	   :with-slots-insert
@@ -15,12 +17,14 @@
 
 (in-package :cldbc)
 
+(proclaim '(inline create-database use-database))
+
 (defclass result ()
   ((fields :initarg :fields
 	   :reader result-fields)
    (content :initarg :content :initform nil
 	    :reader result-content)
-   (pointer :initform 0
+   (pointer :initform 0			;It seems that this varible is useless
 	    :accessor result-pointer
 	    :documentation "The value of this pointer indicates the position of the processing row in the content of the result. The value of this slot should just be modified from inner of some pre-defined functions."))
   (:documentation "The result of query. This class is used for shielding the details when manipulating the query result returned from the database."))
@@ -30,6 +34,21 @@
   (connect :user user-name
 	   :password plain-password
 	   :database database-name)
+  (query "set names 'utf8'"))
+
+(defun create-database (database-name)
+  (query (format nil "CREATE DATABASE ~A character set 'utf8'" database-name)))
+
+(defun use-database (database-name)
+  (query (format nil "USE ~A" database-name)))
+
+(defun sget-connection (user password database)
+  "Acts like the function GET-CONNECTION except that this function would create the objective database if it doesn't exist yet."
+  (connect :user user :password password)
+  (handler-case (use-database database)
+    (cl-mysql-system:mysql-error ()
+      (create-database database)
+      (use-database database)))
   (query "set names 'utf8'"))
 
 (defun gen-cond-expr (cond-spec &optional (cond-type 'where))
@@ -179,3 +198,51 @@
 	(content (result-content result))
 	(pos (field-position field-name result)))
     (nth pos (nth n content))))
+
+(defun gen-field-entry-expr (field-name type &key not-null auto-increment primary-key)
+  "Generate a field specification according to the arguments used when creating a table in a database. The parameter TYPE can be a symbol or a proper list with two elements. If it's a symbol, it must represent a legal type in database. If it is a cons, the first and the second element would be the type and the specification of the type in order. The field with non-nil value of argument AUTO-INCREMENT would be set the primary key flag."
+  (with-output-to-string (*standard-output*)
+    (format t "~A" field-name)
+    (if (consp type)
+	(destructuring-bind (attr n) type
+	  (format t " ~A(~D)" attr n))
+	(format t " ~A" type))
+    (and not-null (format t " NOT NULL"))
+    (and auto-increment (format t " AUTO_INCREMENT"))
+    (and primary-key (format t " PRIMARY KEY"))))
+
+(defun gen-field-spec-expr (fields-spec)
+  (with-output-to-string (*standard-output*)
+    (loop
+       :for fs on fields-spec
+       :do (format t "~A" (apply #'gen-field-entry-expr (car fs)))
+       :when (cdr fs) :do (format t ", "))))
+
+(defun gen-create-table-expr (table-name fields-spec &key table-primary-key)
+  "Generate the string represents the statement for creating a table according to the arguments. Each element in the list FIELDS-SPEC must be the structure of the parameter list of function GEN-FIELD-ENTRY-EXPR."
+  (with-output-to-string (*standard-output*)
+    (format t "CREATE TABLE ~A (~A"
+	    table-name (gen-field-spec-expr fields-spec))
+    (if table-primary-key
+	(format t ", PRIMARY KEY (~{~A~^, ~})" table-primary-key))
+    (format t ")")))
+
+(defun create-table (table-name fields-spec &key table-primary-key)
+  "Start creating a table named TABLE-NAME with fields specified by the arguments FIELDS-SPEC and the others."
+  (query (gen-create-table-expr table-name fields-spec
+				:table-primary-key table-primary-key)))
+
+(defmacro define-simple-class-table (name slots-spec &key table-primary-key)
+  "Define a class and a table in the database both named NAME. The SLOTS-SPEC contains both the specification of slots in class definitions and informations of fields. The name of each slot is the same as the name of each field in table. The class defined through this macro is unable to inherit from other classes. This is why this function is `simple'. For details, see example in file `exdsct.lisp' in example/ directory."
+  `(progn
+     (defun ,name ()
+       ,(mapcar #'(lambda (spec)
+		    (cons (car spec)
+			  (cadr spec)))
+		slots-spec))
+     (create-table ,(format nil "~A" name)
+		   ',(mapcar #'(lambda (spec)
+				 (cons (car spec)
+				       (caddr spec)))
+			     slots-spec)
+		   :table-primary-key ,table-primary-key)))

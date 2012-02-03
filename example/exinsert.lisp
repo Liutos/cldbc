@@ -14,3 +14,19 @@
 ;;; specifying the columns used is here
 
 (sql-insert "Student" '("6" "Foobar" "unk" 19 "ZH") '(sno sname sex age dept))
+
+;;; If you have defined a new class as the following code described, and you'd 
+;;; like to insert a new entry into the database just by specifying only a part of 
+;;; a instance of this kind of class into table, you can use the macro 
+;;; WITH-SLOTS-INSERT. For example
+
+(defclass post ()
+  ((title)
+   (text)))
+
+(with-slots-insert "Posts" a-object title text)
+
+;;; The code above would be expanded to the form like the following expression
+
+(with-slots (title text) a-object
+  (sql-insert "Posts" (list title text) '(title text)))

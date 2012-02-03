@@ -5,3 +5,5 @@ This is a package written in Common Lisp for interacting with the MySQL database
 This package aims to provide a more convenient manner of reading/writing data from/in the MySQL database. In fact, the functions exported by this package just generate the SQL statements and use the interfaces defined by package CL-MYSQL for sending the expressions to the MySQL database.
 
 This package implements the functionanities include connecting to a existing database, selecting, inserting, updating and deleting data objects, using the class and functions manipulating the query results. In a word, this package aims to provide a better interface for operating on data stored in a MySQL database.
+
+This library can be used on SBCL and CLISP that had been tested.

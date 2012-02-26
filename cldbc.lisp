@@ -10,9 +10,11 @@
 	   :result-content
 	   :sget-connection
 	   :create-database
+	   :sql-sole-select
 	   :dorow			;Macros
 	   :with-select
 	   :with-slots-insert
+	   :with-sole-select
 	   ))
 
 (in-package :cldbc)
@@ -246,3 +248,21 @@
 				       (caddr spec)))
 			     slots-spec)
 		   :table-primary-key ,table-primary-key)))
+
+(defmacro with-sole-select ((fields-spec table-name &key where-spec) &body body)
+  "Acts like the macro WITH-SELECT but this macro would not loop among the result set. Instead, the caller of this macro must ensure that the result set returned by the inner SQL-SELECT function just contains one element. That's what `sole' means."
+  (let ((query-result (gensym))
+	(result (gensym))
+	(content (gensym)))
+    `(let ((,query-result (sql-select ',fields-spec ,table-name
+				      :where-spec ,where-spec)))
+       (let ((,result (make-result ,query-result)))
+	 (let ((,content (result-content ,result)))
+	   (destructuring-bind ,fields-spec (car ,content)
+	     ,@body))))))
+
+(defun sql-sole-select (fields-spec table-name &key where-spec)
+  "Acts like the function SQL-SELECT but this function returns the first element in the result set. The caller must ensure that the object result set just contains one element."
+  (car (result-content (make-result (sql-select fields-spec
+						table-name
+						:where-spec where-spec)))))

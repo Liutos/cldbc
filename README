@@ -6,4 +6,4 @@ This package aims to provide a more convenient manner of reading/writing data fr
 
 This package implements the functionanities include connecting to a existing database, selecting, inserting, updating and deleting data objects, using the class and functions manipulating the query results. In a word, this package aims to provide a better interface for operating on data stored in a MySQL database.
 
-This library can be used on SBCL and CLISP that had been tested.
+This library can be used on SBCL and CLISP that had been tested. And it can not be used on the ECL implementation.

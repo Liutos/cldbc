@@ -4,6 +4,7 @@
 	   :sql-insert
 	   :sql-update
 	   :sql-delete
+	   ;; The functions above is the basic operations of a SQL database
 	   :make-result
 	   :get-connection
 	   :maprow
@@ -15,7 +16,8 @@
 	   :with-select
 	   :with-slots-insert
 	   :with-sole-select
-	   ))
+	   )
+  (:documentation "The function MAPROW and macro WITH-SELECT is used for applying the same operation on every elements in the result set returned from the database."))
 
 (in-package :cldbc)
 
@@ -250,7 +252,7 @@
 		   :table-primary-key ,table-primary-key)))
 
 (defmacro with-sole-select ((fields-spec table-name &key where-spec) &body body)
-  "Acts like the macro WITH-SELECT but this macro would not loop among the result set. Instead, the caller of this macro must ensure that the result set returned by the inner SQL-SELECT function just contains one element. That's what `sole' means."
+  "Acts like the macro WITH-SELECT but this macro would not loop among the result set. Instead, the caller of this macro must ensure that the result set returned by the inner SQL-SELECT function just contains one element. That's what `sole' means. For more information see file `exsole-select.lisp'."
   (let ((query-result (gensym))
 	(result (gensym))
 	(content (gensym)))

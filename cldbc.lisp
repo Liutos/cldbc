@@ -16,6 +16,7 @@
 	   :with-select
 	   :with-slots-insert
 	   :with-sole-select
+	   :with-sole-found
 	   )
   (:documentation "The function MAPROW and macro WITH-SELECT is used for applying the same operation on every elements in the result set returned from the database."))
 
@@ -118,7 +119,12 @@
     (format t "INSERT INTO ~A" table-name)
     (if fields
 	(format t " (~{~A~^, ~})" fields))
-    (format t " VALUES (~{'~A'~^, ~})" (mapcar #'escape-string values))))
+    (format t " VALUES (~{'~A'~^, ~})" (mapcar #'escape-string
+					       (mapcar #'(lambda (x)
+							   (if (stringp x)
+							       x
+							       (format nil "~S" x)))
+						       values)))))
 
 (defun sql-insert (table-name values &optional fields)
   "Insert a new entry into the given table in database."
@@ -268,3 +274,15 @@
   (car (result-content (make-result (sql-select fields-spec
 						table-name
 						:where-spec where-spec)))))
+
+(defmacro with-sole-found ((fields-spec table-name &key where-spec) &body body)
+  (let ((query-result (gensym))
+	(content (gensym)))
+    `(let ((,query-result (sql-select ',fields-spec
+				      ,table-name
+				      :where-spec ,where-spec)))
+       (let ((,content (result-content (make-result ,query-result))))
+	 (cond (,content
+		(destructuring-bind ,fields-spec (car ,content)
+		  ,@body))
+	       (t nil))))))

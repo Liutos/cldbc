@@ -1,5 +1,7 @@
 (defpackage :cldbc
   (:use :cl :cl-mysql)
+  (:shadowing-import-from :cl-mysql
+			  :escape-string)
   (:export :sql-select			;Functions
 	   :sql-insert
 	   :sql-update
@@ -12,6 +14,7 @@
 	   :sget-connection
 	   :create-database
 	   :sql-sole-select
+	   :escape-string
 	   :dorow			;Macros
 	   :with-select
 	   :with-slots-insert
@@ -119,12 +122,7 @@
     (format t "INSERT INTO ~A" table-name)
     (if fields
 	(format t " (~{~A~^, ~})" fields))
-    (format t " VALUES (~{'~A'~^, ~})" (mapcar #'escape-string
-					       (mapcar #'(lambda (x)
-							   (if (stringp x)
-							       x
-							       (format nil "~S" x)))
-						       values)))))
+    (format t " VALUES (~{'~A'~^, ~})" values)))
 
 (defun sql-insert (table-name values &optional fields)
   "Insert a new entry into the given table in database."
@@ -286,3 +284,7 @@
 		(destructuring-bind ,fields-spec (car ,content)
 		  ,@body))
 	       (t nil))))))
+
+(defun escape-string (string &key database)
+  "The re-exporting symbol of the function named `escape-string' in package CL-MYSQL."
+  (cl-mysql::escape-string string :database database))

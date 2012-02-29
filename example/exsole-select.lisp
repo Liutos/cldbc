@@ -27,3 +27,15 @@
 ;;; because the macro is designed ealier than the function. Sometimes the function 
 ;;; call of SQL-SOLE-SELECT is more elegant than the calling of macro 
 ;;; WITH-SOLE-SELECT.
+
+;;; The macro WITH-SOLE-FOUND is better than macro WITH-SOLE-SELECT because it 
+;;; will return NIL automatically when the result of query in the database is 
+;;; empty. Otherwise, the expression in BODY argument would be evaluted and the 
+;;; return value in controled by them.
+
+(with-sole-found ((Sno Sname) "Student"
+		  :where-spec '((Sno = 0)))
+  (list Sno Sname))
+
+;;; The code above will return NIL because the default table Student does not 
+;;; have a row with Sno equals zero.

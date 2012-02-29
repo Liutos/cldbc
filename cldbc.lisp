@@ -274,6 +274,7 @@
 						:where-spec where-spec)))))
 
 (defmacro with-sole-found ((fields-spec table-name &key where-spec) &body body)
+  "Act like the macro WITH-SOLE-SELECT above. This macro will return nil when the result set returned from the query of selecting in database contains no elements. In the other case, the expression in the argument BODY will be evaluted. See `exsole-select.lisp' for details."
   (let ((query-result (gensym))
 	(content (gensym)))
     `(let ((,query-result (sql-select ',fields-spec

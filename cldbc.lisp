@@ -65,7 +65,7 @@
     (format t "~A " cond-type)
     (loop for triple on cond-spec
        do (destructuring-bind (l op r) (car triple)
-	    (format t "~A ~A '~A'" l op r))
+  	    (format t "~A ~A '~A'" l op r))
        when (cdr triple) do (format t " AND "))))
 
 (defun gen-group-by-expr (group-by-spec)

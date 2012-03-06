@@ -20,6 +20,7 @@
 	   :with-slots-insert
 	   :with-sole-select
 	   :with-sole-found
+	   :with-sole-found-let
 	   )
   (:documentation "The function MAPROW and macro WITH-SELECT is used for applying the same operation on every elements in the result set returned from the database."))
 
@@ -93,7 +94,11 @@
 	(loop for fields on fields-spec
 	   do (let ((field (car fields)))
 		(if (consp field)
-		    (format t "~{~A~^ ~}" field)
+		    (if (member (car field) '(max))
+			(progn
+			  (format t "~A" (car field))
+			  (format t "(~{~A~^, ~})" (cdr field)))
+			(format t "~{~A~^ ~}" field))
 		    (format t "~A" field)))
 	   when (cdr fields) do (format t ", ")))))
 
@@ -283,6 +288,24 @@
        (let ((,content (result-content (make-result ,query-result))))
 	 (cond (,content
 		(destructuring-bind ,fields-spec (car ,content)
+		  ,@body))
+	       (t nil))))))
+
+(defmacro with-sole-found-let ((fields-spec table-name &key where-spec) &body body)
+  "Thsi macro is similar with the previous version named WITH-SOLE-FOUND. The FIELDS-SPEC argument of this macro is special because each element in this argument can both be a symbol of a list contains two sub elements. If it's a symbol, it would be used both as column name in query statement and variable name in a LET form. If it's a list, the car of it would be used as the variable name and the cadr, the second one would be used as the column name for constructing the query statement."
+  (let ((query-result (gensym))
+	(content (gensym))
+	(fields-spec (mapcar #'(lambda (x)
+				 (if (consp x) (cadr x) x))
+			     fields-spec))
+	(vars (mapcar #'(lambda (x)
+			  (if (consp x) (car x) x))
+		      fields-spec)))
+    `(let ((,query-result (sql-select ',fields-spec ,table-name
+				      :where-spec ,where-spec)))
+       (let ((,content (result-content (make-result ,query-result))))
+	 (cond (,content
+		(destructuring-bind ,vars (car ,content)
 		  ,@body))
 	       (t nil))))))
 

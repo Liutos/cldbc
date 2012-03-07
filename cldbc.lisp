@@ -60,14 +60,36 @@
       (use-database database)))
   (query "set names 'utf8'"))
 
+;;; The old version of function GEN-COND-EXPR.
+;; (defun gen-cond-expr (cond-spec &optional (cond-type 'where))
+;;   "Generate a string of AND expression that each sub-expression is constructed with a left-value, a operator and a right-value according to each element in the COND-SPEC list."
+;;   (with-output-to-string (*standard-output*)
+;;     (format t "~A " cond-type)
+;;     (loop for triple on cond-spec
+;;        do (destructuring-bind (l op r) (car triple)
+;;   	    (format t "~A ~A '~A'" l op r))
+;;        when (cdr triple) do (format t " AND "))))
+
+(defun gen-cond-rec (cond-set)
+  (let ((lg 'and) (st cond-set))
+    (when (member (car cond-set) '(and or))
+      (setf lg (car cond-set)
+	    st (cdr cond-set)))
+    (with-output-to-string (*standard-output*)
+      (loop
+	 :for triples :on st
+	 :do (let ((triple (car triples)))
+	       (if (member (car triple) '(and or))
+		   (format t "(~A)" (gen-cond-rec triple))
+		   (destructuring-bind (l op r) triple
+		     (format t "~A ~A '~A'" l op r))))
+	 :when (cdr triples) :do (format t " ~S " lg)))))
+
 (defun gen-cond-expr (cond-spec &optional (cond-type 'where))
-  "Generate a string of AND expression that each sub-expression is constructed with a left-value, a operator and a right-value according to each element in the COND-SPEC list."
+  "Generate a string of AND expression that each sub-expression is constructed with a left-value, a operator and a right-value according to each element in the COND-SPEC list. This new version function can process its first argument recursively. See file `exgen-cond.lisp' for detail."
   (with-output-to-string (*standard-output*)
     (format t "~A " cond-type)
-    (loop for triple on cond-spec
-       do (destructuring-bind (l op r) (car triple)
-  	    (format t "~A ~A '~A'" l op r))
-       when (cdr triple) do (format t " AND "))))
+    (format t "~A" (gen-cond-rec cond-spec))))
 
 (defun gen-group-by-expr (group-by-spec)
   "Generate the string of GROUP BY clause."

@@ -7,14 +7,17 @@
 	   :sql-update
 	   :sql-delete
 	   ;; The functions above is the basic operations of a SQL database
-	   :make-result
-	   :get-connection
-	   :maprow
-	   :result-content
-	   :sget-connection
 	   :create-database
-	   :sql-sole-select
+	   :delete-from-all-tables
 	   :escape-string
+	   :get-connection
+	   :make-result
+	   :maprow
+	   :mapselect
+	   :result-content
+	   :row-exist-p
+	   :sget-connection
+	   :sql-sole-select
 	   :dorow			;Macros
 	   :with-select
 	   :with-slots-insert
@@ -27,6 +30,7 @@
 (in-package :cldbc)
 
 (proclaim '(inline create-database use-database))
+(declaim (optimize (debug 3)))
 
 (defclass result ()
   ((fields :initarg :fields
@@ -195,6 +199,13 @@
 	      (apply fn row))
 	  (result-content result)))
 
+(defun mapselect (fn fields-spec table-name &key where-spec group-by-spec order-by-spec)
+  "Query a result set from the database depends on the argument FIELDS-SPEC, TABLE-NAME and the three keyword argument and after this, map the function FN to each of the elements in the result set."
+  (maprow fn (make-result (sql-select fields-spec table-name
+				      :where-spec where-spec
+				      :group-by-spec group-by-spec
+				      :order-by-spec order-by-spec))))
+
 (defmacro dorow ((var result) &body body)
   `(dolist (,var (result-content ,result))
      ,@body))
@@ -334,3 +345,15 @@
 (defun escape-string (string &key database)
   "The re-exporting symbol of the function named `escape-string' in package CL-MYSQL."
   (cl-mysql::escape-string string :database database))
+
+(defun row-exist-p (table-name where-spec)
+  "Return T if the table in database named TABLE-NAME contains a row meets the requirement specified by argument WHERE-SPEC."
+  (with-select ((* args) table-name
+		:where-spec where-spec)
+    (return args)))
+
+(defun delete-from-all-tables ()
+  (let ((table-names (mapcan #'identity
+			     (caar (list-tables)))))
+    (dolist (table table-names)
+      (sql-delete table))))

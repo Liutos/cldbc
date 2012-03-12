@@ -1,7 +1,5 @@
 (defpackage :cldbc
   (:use :cl :cl-mysql)
-  (:shadowing-import-from :cl-mysql
-			  :escape-string)
   (:export :sql-select			;Functions
 	   :sql-insert
 	   :sql-update
@@ -9,7 +7,7 @@
 	   ;; The functions above is the basic operations of a SQL database
 	   :create-database
 	   :delete-from-all-tables
-	   :escape-string
+	   :esc-string
 	   :get-connection
 	   :make-result
 	   :maprow
@@ -342,9 +340,9 @@
 		  ,@body))
 	       (t nil))))))
 
-(defun escape-string (string &key database)
+(defun esc-string (string &key database)
   "The re-exporting symbol of the function named `escape-string' in package CL-MYSQL."
-  (cl-mysql::escape-string string :database database))
+  (escape-string string :database database))
 
 (defun row-exist-p (table-name where-spec)
   "Return T if the table in database named TABLE-NAME contains a row meets the requirement specified by argument WHERE-SPEC."
